@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quintile Dashboard</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;800&family=Inter:wght@400;500;600&display=swap"><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script><style id="css">
+/* VOICE: clinical, like a newspaper graphics desk - black ink on white paper
+   IDEA: a printed league table / ranking sheet for a district
+   PICTURE: a rank strip from 1 to the last store, cut into five quintile bands, every store pinned on it
+   COLOUR and TYPE: royal blue brand on cool white; quintiles run green (Q1) to amber to red (Q5); Inter Tight + Inter
+   LAYOUT: sticky top bar with tabs + filters, finding as title, strip, cards, tables */
+
+/* ---------- 1. Theme colours ---------- */
+:root{color-scheme:light dark;--bg:light-dark(#e6e9f0,#0a0d18);--card:light-dark(#fff,#151b2e);--ink:light-dark(#141a2e,#eef1f8);--mut:light-dark(#5d6680,#9aa3bd);--line:light-dark(#e2e6f0,#262e48);--soft:light-dark(#eef1f8,#1c2338);--mid:light-dark(#c3c9da,#3a4466);
+ --brand:light-dark(#2f4fd8,#7d93ff);--brand-ink:light-dark(#fff,#0d1120);--brand-soft:light-dark(#e6ebff,#222c55);
+ --q1:light-dark(#12805c,#37c48f);--q2:light-dark(#3ba776,#6fd3a2);--q3:light-dark(#d4940f,#f2bd45);--q4:light-dark(#e2672a,#ff9a5e);--q5:light-dark(#cf3b4d,#ff6b7c)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html{scroll-padding-top:140px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,sans-serif;overflow-x:clip;font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:"Inter Tight",Inter,sans-serif;margin:0;line-height:1.05;text-wrap:balance}
+h1{font-size:clamp(30px,4.4vw,48px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:22px;font-weight:800;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.mut{color:var(--mut)}.small{font-size:13px}
+a{color:inherit}
+
+/* ---------- 2. Top navigation ---------- */
+.nav{position:sticky;top:0;z-index:20;background:var(--card);border-bottom:1px solid var(--line);box-shadow:0 1px 0 var(--line),0 6px 18px -12px rgba(20,30,70,.25);display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding:10px max(4vw,14px)}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font:800 19px "Inter Tight",sans-serif}
+.logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--q1),var(--brand) 55%,var(--q5));color:#fff;display:grid;place-items:center}
+.tabs{display:flex;gap:4px;overflow-x:auto}
+.tabs a{text-decoration:none;padding:10px 14px;border-radius:999px;font-weight:600;white-space:nowrap;min-height:44px;display:flex;align-items:center}
+.tabs a{color:var(--mut)}.tabs a:hover{color:var(--ink);background:var(--soft)}
+.tabs a[aria-current=page]{background:var(--brand-soft);color:var(--brand)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-inline-start:auto}
+.sel{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut)}
+.status{font-size:13px;color:var(--mut);padding-inline-start:6px;white-space:nowrap}
+.status::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--q1);margin-inline-end:6px}
+.status.busy::before{background:var(--q3)}
+
+/* ---------- 3. Form controls ---------- */
+select,input,textarea{font:16px Inter,sans-serif;color:var(--ink);background:var(--card);border:1px solid var(--mid);border-radius:10px;min-height:44px;padding:8px 12px}
+textarea{width:100%;min-height:140px;font:13px/1.4 ui-monospace,Menlo,monospace}
+input[type=range]{accent-color:var(--brand);border:0;padding:0;width:100%}
+input[type=number]{width:100%}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.btn{min-height:44px;padding:0 18px;border:1px solid var(--brand);border-radius:999px;background:var(--card);color:var(--brand);font:600 15px Inter,sans-serif;cursor:pointer;white-space:nowrap}
+.btn.solid{background:var(--brand);color:var(--brand-ink)}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.btn:hover{box-shadow:0 0 0 3px var(--brand-soft)}
+
+/* ---------- 4. Layout pieces ---------- */
+main{max-width:1240px;margin:0 auto;padding:clamp(20px,3vw,40px) max(4vw,14px) 80px}
+.view{display:none}.view.on{display:block}
+.head{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+.sec{margin-top:40px}.sec>h2{margin-bottom:6px}.sec>.mut{margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.card{border:1px solid light-dark(#dde1ea,#262e48);border-radius:14px;padding:18px;background:var(--card);box-shadow:0 1px 3px rgba(20,30,70,.08),0 6px 16px -10px rgba(20,30,70,.18)}
+.card.click{cursor:pointer;transition:border-color .15s}.card.click:hover{border-color:var(--brand);box-shadow:0 8px 24px -14px rgba(47,79,216,.5)}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:14px}
+.kpi .card b{color:var(--brand);display:block;font:800 clamp(28px,4vw,38px)/1.1 "Inter Tight",sans-serif;margin-top:4px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--mid);border-radius:999px;padding:8px 14px;min-height:44px;background:var(--card);color:var(--ink);font:600 14px Inter,sans-serif;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.chip .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-inline-end:6px}
+.empty{border:1px dashed var(--mid);border-radius:14px;padding:32px;text-align:center;color:var(--mut)}
+
+/* ---------- 5. Quintile badges: Q1 green -> Q5 red ---------- */
+.qb{display:inline-grid;place-items:center;min-width:34px;height:30px;padding:0 8px;border-radius:8px;font:800 14px "Inter Tight",sans-serif;white-space:nowrap;color:#fff}
+.q1{background:var(--q1)}.q2{background:var(--q2)}.q3{background:var(--q3)}.q4{background:var(--q4)}.q5{background:var(--q5)}
+:root[data-theme=dark] .qb{color:#0d1120}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .qb{color:#0d1120}}
+.qb.big{height:56px;min-width:64px;font-size:26px;border-radius:12px}
+
+/* ---------- 6. Metric bars, tables, charts ---------- */
+.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--brand);border-radius:3px}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 10px;font-size:13px;padding:5px 0;border-top:1px solid var(--line)}
+.mrow span:nth-child(n+2){text-align:right}
+.tag{font-size:12px;font-weight:600;color:var(--brand);background:var(--brand-soft);border:1px solid var(--brand-soft);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:10px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;color:var(--mut);font-weight:600;vertical-align:bottom;white-space:normal;min-width:84px}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card);z-index:1}
+thead th{background:var(--soft)}
+td small{display:block;font-size:12px;opacity:.75}
+tr.click{cursor:pointer}tr.click:hover td:first-child{text-decoration:underline}
+.fig{position:relative;min-height:200px}.fig>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.fig text{fill:var(--ink);font:12px Inter,sans-serif}
+.pos{font-weight:600;color:var(--q1)}.neg{font-weight:600;color:var(--q5)}
+
+/* ---------- 7. Planner + what-if ---------- */
+.plan td:first-child{font-weight:600}
+.wi{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
+.wirow{display:grid;grid-template-columns:150px minmax(0,1fr) 92px 110px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.wirow label{font-weight:600;font-size:14px}
+.wirow{transition:background .2s}
+.wirow.chg{background:var(--brand-soft);border-radius:10px;padding-inline:10px;margin-inline:-10px;border-top-color:transparent;box-shadow:inset 4px 0 0 var(--brand)}
+.wirow .mv{display:block;font-size:12px;color:var(--brand);font-weight:700}
+.wirow.chg + .wirow{border-top-color:transparent}
+.wisrc{display:flex;align-items:center;gap:8px;font-size:14px;padding:10px 12px;border-radius:10px;background:var(--soft);margin-bottom:6px}
+.wisrc.on{background:var(--brand);color:var(--brand-ink);font-weight:600}
+.plan td.hl{background:var(--brand-soft);color:var(--brand);box-shadow:inset 3px 0 0 var(--brand)}
+.plan td.hl small{opacity:1;font-weight:600}
+.wirow input[type=number]{min-height:38px;padding:4px 8px;text-align:right}
+.wirow .r{font-size:13px;text-align:right;white-space:nowrap}
+.result{position:sticky;top:150px;text-align:center}
+.result{background:linear-gradient(180deg,var(--brand-soft),var(--card) 70%)}
+.result b{color:var(--brand);display:block;font:800 clamp(48px,8vw,72px)/1 "Inter Tight",sans-serif;margin:8px 0}
+.drop{border:2px dashed var(--mid);border-radius:14px;padding:30px 16px;text-align:center;cursor:pointer}
+.drop{background:var(--soft)}.drop.over{border-color:var(--brand);background:var(--brand-soft)}
+.drop input{display:none}
+.toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,140%);background:var(--brand);color:var(--brand-ink);padding:12px 18px;border-radius:12px;font-weight:600;max-width:min(92vw,520px);transition:transform .25s;z-index:50;visibility:hidden}
+.toast.on{transform:translate(-50%,0);visibility:visible}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+/* ---------- 8. Sign-in screen + view-only notice ---------- */
+.login{position:fixed;inset:0;z-index:60;background:var(--bg);display:grid;place-items:center;padding:16px}
+.login[hidden]{display:none}
+.login form{width:min(100%,380px);display:grid;gap:14px;text-align:center;padding:28px}
+.remember{display:flex;gap:8px;align-items:center;justify-content:center;font-size:14px;color:var(--mut)}
+.remember input{min-height:0;width:18px;height:18px;accent-color:var(--brand)}
+.notice{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--brand-soft);border-color:var(--brand-soft);margin-bottom:18px}
+:disabled{opacity:.5;cursor:not-allowed}
+
+/* ---------- 9. Small screens ---------- */
+@media(max-width:860px){.wi{grid-template-columns:minmax(0,1fr)}.result{position:static}}
+@media(max-width:700px){.two{grid-template-columns:minmax(0,1fr)}.filters{margin-inline-start:0;width:100%}.sel{flex:1 1 140px}.sel select{width:100%}
+ .wirow{grid-template-columns:minmax(0,1fr) 92px;}.wirow input[type=range]{grid-column:1/-1;order:3}.wirow .r{grid-column:1/-1;order:4;text-align:left}}
+</style></head><body><div id="app">
+<header class="nav">
+  <a class="brand" href="#overview"><span class="logo">Q</span><span>Quintile</span></a>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#overview" data-tab="overview">Overview</a>
+    <a href="#store" data-tab="store">My store</a>
+    <a href="#data" data-tab="data">Load data</a>
+  </nav>
+  <div class="filters">
+    <label class="sel">Month <select id="fMonth"></select></label>
+    <label class="sel">Store <select id="fStore"></select></label>
+    <span class="status" id="status">Ready</span>
+    <button class="btn sm" id="acct" type="button" hidden>Sign in to edit</button>
+  </div>
+</header>
+<main>
+  <div class="empty" id="boot" style="max-width:420px;margin:40px auto">Loading dashboard…</div>
+  <section class="view" id="v-overview"></section>
+  <section class="view" id="v-store"></section>
+  <section class="view" id="v-data"></section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="login" id="login" hidden>
+  <form class="card" id="loginForm">
+    <span class="logo" style="margin:0 auto">Q</span>
+    <h2>Quintile dashboard</h2>
+    <p class="mut" id="loginMsg">Enter the dashboard password.</p>
+    <input type="password" id="pw" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
+    <label class="remember"><input type="checkbox" id="remember" checked> Remember me on this device</label>
+    <button class="btn solid" type="submit">Open dashboard</button>
+    <button class="btn" type="button" id="loginCancel" hidden>Keep viewing</button>
+  </form>
+</div>
+</div><script type="application/json" id="seed">{"updated":0,"settings":{"label":"Demo district","total":334,"weights":{"gp":15,"pp":15,"rebiz":15,"acc":10,"csat":10,"ban":15,"p360":10,"prem":10},"quint":[[1,66],[67,133],[134,200],[201,267],[268,334]]},"rows":[{"month":"09/2026","id":"D101","store":"Riverside","q":3,"rank":150,"m":{"gp":[0.8685,89],"pp":[0.8621,114],"rebiz":[0.4918,299],"acc":[0.581,207],"csat":[9.8625,89],"ban":[1.5209,71],"p360":[0.6579,233],"prem":[0.8916,207]},"sample":true},{"month":"09/2026","id":"D102","store":"Maple Ave","q":3,"rank":184,"m":{"gp":[0.6749,136],"pp":[0.6425,236],"rebiz":[0.5398,273],"acc":[0.7654,100],"csat":[9.9565,65],"ban":[0.9921,191],"p360":[0.905,133],"prem":[0.9216,200]},"sample":true},{"month":"09/2026","id":"D103","store":"Harbor Point","q":2,"rank":129,"m":{"gp":[0.8282,106],"pp":[0.8518,116],"rebiz":[0.4306,303],"acc":[0.8278,105],"csat":[8.8268,197],"ban":[1.671,40],"p360":[1.1747,58],"prem":[0.8456,214]},"sample":true},{"month":"09/2026","id":"D104","store":"Cedar Plaza","q":3,"rank":178,"m":{"gp":[0.6491,149],"pp":[1.1032,73],"rebiz":[0.7268,167],"acc":[0.6231,202],"csat":[9.7406,96],"ban":[0.8656,232],"p360":[0.5113,279],"prem":[0.9639,183]},"sample":true},{"month":"09/2026","id":"D105","store":"Oak Park","q":3,"rank":180,"m":{"gp":[0.4997,208],"pp":[0.8973,134],"rebiz":[0.655,213],"acc":[0.8027,109],"csat":[9.8183,1],"ban":[0.4241,334],"p360":[1.4103,28],"prem":[0.8147,228]},"sample":true},{"month":"09/2026","id":"D106","store":"Summit Blvd","q":4,"rank":219,"m":{"gp":[0.6934,136],"pp":[0.6809,222],"rebiz":[0.6124,221],"acc":[0.3374,306],"csat":[8.7875,211],"ban":[1.4555,43],"p360":[0.3815,316],"prem":[0.9634,195]},"sample":true},{"month":"09/2026","id":"D107","store":"Elm Street","q":4,"rank":260,"m":{"gp":[0.4706,218],"pp":[0.7927,184],"rebiz":[0.4715,311],"acc":[0.543,229],"csat":[8.5513,285],"ban":[2.1685,6],"p360":[0.2275,325],"prem":[0.8024,233]},"sample":true},{"month":"09/2026","id":"D108","store":"Westgate","q":4,"rank":253,"m":{"gp":[0.3829,239],"pp":[1.0297,94],"rebiz":[0.6294,225],"acc":[0.7075,143],"csat":[9.0621,185],"ban":[0.8437,238],"p360":[0.5844,261],"prem":[0.4158,304]},"sample":true},{"month":"09/2026","id":"D109","store":"Lakeshore","q":5,"rank":316,"m":{"gp":[0.3129,255],"pp":[0.3056,334],"rebiz":[0.3375,321],"acc":[1.0659,25],"csat":[9.7729,86],"ban":[0.384,334],"p360":[0.5933,258],"prem":[0.8219,230]},"sample":true},{"month":"10/2026","id":"D101","store":"Riverside","q":2,"rank":86,"m":{"gp":[0.8962,71],"pp":[1.2132,33],"rebiz":[0.5951,245],"acc":[0.6579,174],"csat":[9.8811,111],"ban":[1.5647,36],"p360":[0.676,225],"prem":[0.8413,214]},"sample":true},{"month":"10/2026","id":"D102","store":"Maple Ave","q":3,"rank":160,"m":{"gp":[0.7355,114],"pp":[0.6679,226],"rebiz":[0.5895,248],"acc":[1.0097,41],"csat":[9.6446,114],"ban":[0.9758,206],"p360":[1.0652,95],"prem":[1.1874,112]},"sample":true},{"month":"10/2026","id":"D103","store":"Harbor Point","q":2,"rank":131,"m":{"gp":[0.7574,129],"pp":[0.7867,153],"rebiz":[0.4344,306],"acc":[0.9498,66],"csat":[8.7577,202],"ban":[1.972,8],"p360":[1.0117,91],"prem":[0.9678,177]},"sample":true},{"month":"10/2026","id":"D104","store":"Cedar Plaza","q":3,"rank":141,"m":{"gp":[0.763,117],"pp":[1.3893,6],"rebiz":[0.9145,86],"acc":[0.4942,251],"csat":[9.5984,101],"ban":[0.8136,243],"p360":[0.5281,262],"prem":[0.9711,165]},"sample":true},{"month":"10/2026","id":"D105","store":"Oak Park","q":3,"rank":168,"m":{"gp":[0.5019,207],"pp":[0.9751,101],"rebiz":[0.5806,236],"acc":[0.9059,81],"csat":[9.9684,83],"ban":[0.4811,319],"p360":[1.5794,1],"prem":[0.9063,197]},"sample":true},{"month":"10/2026","id":"D106","store":"Summit Blvd","q":3,"rank":188,"m":{"gp":[0.6936,128],"pp":[0.894,151],"rebiz":[0.6922,195],"acc":[0.31,313],"csat":[9.1279,157],"ban":[1.7943,20],"p360":[0.4857,270],"prem":[0.8229,224]},"sample":true},{"month":"10/2026","id":"D107","store":"Elm Street","q":5,"rank":271,"m":{"gp":[0.4353,231],"pp":[0.7526,178],"rebiz":[0.4475,303],"acc":[0.6396,191],"csat":[8.3354,334],"ban":[1.7486,18],"p360":[0.2214,334],"prem":[0.8139,227]},"sample":true},{"month":"10/2026","id":"D108","store":"Westgate","q":5,"rank":291,"m":{"gp":[0.4059,241],"pp":[0.8091,154],"rebiz":[0.5171,285],"acc":[0.7304,153],"csat":[8.523,286],"ban":[1.0172,194],"p360":[0.5619,258],"prem":[0.4136,319]},"sample":true},{"month":"10/2026","id":"D109","store":"Lakeshore","q":5,"rank":310,"m":{"gp":[0.3036,266],"pp":[0.2813,334],"rebiz":[0.2787,334],"acc":[0.9494,52],"csat":[9.6072,100],"ban":[0.3453,334],"p360":[0.7109,207],"prem":[0.9137,204]},"sample":true},{"month":"11/2026","id":"D101","store":"Riverside","q":2,"rank":74,"m":{"gp":[0.8966,70],"pp":[1.207,45],"rebiz":[0.5732,257],"acc":[0.6726,155],"csat":[9.8846,95],"ban":[1.4767,37],"p360":[0.7978,166],"prem":[1.0569,165]},"sample":true},{"month":"11/2026","id":"D102","store":"Maple Ave","q":2,"rank":87,"m":{"gp":[0.9123,77],"pp":[0.7396,206],"rebiz":[0.6822,197],"acc":[1.0685,40],"csat":[9.8388,1],"ban":[0.9679,197],"p360":[1.1141,75],"prem":[1.0348,145]},"sample":true},{"month":"11/2026","id":"D103","store":"Harbor Point","q":2,"rank":96,"m":{"gp":[0.8514,94],"pp":[0.9508,110],"rebiz":[0.47,291],"acc":[0.8071,85],"csat":[8.611,227],"ban":[1.9774,9],"p360":[1.1432,60],"prem":[0.9772,153]},"sample":true},{"month":"11/2026","id":"D104","store":"Cedar Plaza","q":2,"rank":104,"m":{"gp":[0.8205,97],"pp":[1.2003,29],"rebiz":[0.7664,116],"acc":[0.5579,225],"csat":[9.9773,1],"ban":[0.8945,228],"p360":[0.551,263],"prem":[0.9626,146]},"sample":true},{"month":"11/2026","id":"D105","store":"Oak Park","q":2,"rank":125,"m":{"gp":[0.5483,189],"pp":[1.1218,67],"rebiz":[0.802,145],"acc":[0.9914,64],"csat":[9.8665,1],"ban":[0.4893,321],"p360":[1.5611,7],"prem":[0.9189,195]},"sample":true},{"month":"11/2026","id":"D106","store":"Summit Blvd","q":3,"rank":187,"m":{"gp":[0.7262,116],"pp":[0.8149,162],"rebiz":[0.7068,191],"acc":[0.3215,325],"csat":[9.0462,167],"ban":[1.6078,25],"p360":[0.4668,274],"prem":[0.9617,197]},"sample":true},{"month":"11/2026","id":"D107","store":"Elm Street","q":4,"rank":232,"m":{"gp":[0.4714,221],"pp":[0.9166,130],"rebiz":[0.4537,322],"acc":[0.5887,205],"csat":[8.7276,202],"ban":[2.0189,6],"p360":[0.2722,302],"prem":[0.7795,244]},"sample":true},{"month":"11/2026","id":"D108","store":"Westgate","q":4,"rank":228,"m":{"gp":[0.4532,224],"pp":[0.9971,90],"rebiz":[0.6462,217],"acc":[0.7364,119],"csat":[8.7669,179],"ban":[0.9327,200],"p360":[0.6496,238],"prem":[0.4159,308]},"sample":true},{"month":"11/2026","id":"D109","store":"Lakeshore","q":5,"rank":304,"m":{"gp":[0.2908,278],"pp":[0.3187,334],"rebiz":[0.3511,307],"acc":[1.0053,38],"csat":[9.9042,83],"ban":[0.4104,331],"p360":[0.7626,200],"prem":[0.8371,227]},"sample":true}]}</script><script id="main">
+{
+/* =====================================================================
+   QUINTILE DASHBOARD - all the logic lives in this one script.
+   Sections: 1 config, 2 saved data, 3 helpers, 4 prediction model,
+   5 Excel/paste import, 6 overview, 7 store view, 8 data view, 9 start-up + sign-in
+   ===================================================================== */
+
+/* ---------- 1. CONFIG: the 8 metrics, matching the Excel export columns ---------- */
+// fmt "pct" = shown as %, "num" = plain number (CSAT is out of 10)
+// val / rank = possible column headers (lower-case, letters+digits only)
+const METRICS = [
+  {k:'gp',    label:'GP Per Hour',        fmt:'pct', val:['gpperlaborhourtgt','gpperhourtgt','gpperhour'], rank:['gpperlaborhourrank','gpperhourrank']},
+  {k:'pp',    label:'Postpaid Pct Tgt',   fmt:'pct', val:['ppacttgt','postpaidpcttgt'],               rank:['ppactattainrank','ppactrank','postpaidrank']},
+  {k:'rebiz', label:'Rebiz Conversion',   fmt:'pct', val:['rebizconvtgt','rebizconversion'],         rank:['rebizconvrank','rebizconversionrank']},
+  {k:'acc',   label:'Acc Pct Tgt',        fmt:'pct', val:['accgppctactual','accpcttgt','accgppcttgt'], rank:['accgppctrank','accpctrank']},
+  {k:'csat',  label:'CSAT',               fmt:'num', val:['csatactual','csat'],                       rank:['csatrank']},
+  {k:'ban',   label:'New BAN Attainment', fmt:'pct', val:['newbanattainment'],                        rank:['newbanrank','newbanattainmentrank']},
+  {k:'p360',  label:'P360 Attach Rate',   fmt:'pct', val:['p360attachratetgt','p360attachrate'],     rank:['p360attachraterank']},
+  {k:'prem',  label:'Premium Rate Plan Mix', fmt:'pct', val:['premiummixratetgt','premiumrateplanmix'], rank:['premiumrateplanrank','premiummixraterank']}
+];
+const KEY = 'quintile-dashboard-data', UIKEY = 'quintile-dashboard-ui';
+
+/* ---------- 2. SAVED DATA: one shared copy on Netlify + a cached copy on this device ----------
+   The server keeps the shared copy at /api/data (see netlify/functions/data.mjs).
+   EDIT_PASSWORD lets people load data and change settings; VIEW_PASSWORD (optional) is needed just to look.
+   If the server can't be reached (e.g. you opened index.html straight from your computer),
+   the dashboard still works and saves on this device only. */
+const SEED = JSON.parse(document.getElementById('seed').textContent); // fictional demo data, shown until real data is saved
+let S = SEED;
+try { const local = JSON.parse(localStorage.getItem(KEY) || 'null'); if (local && local.rows) S = local; } catch (e) {}
+let ui = {month:'', store:'', target:null, qf:0, sort:'rank'};
+try { Object.assign(ui, JSON.parse(localStorage.getItem(UIKEY) || '{}')); } catch (e) {}
+let whatif = null;          // what-if slider values for the open store
+let role = 'edit';          // what the current password allows: 'edit' or 'view'
+let online = false;         // true once the Netlify server has answered
+let serverUpdated = null;   // version of the shared copy we last loaded or saved
+let saveTimer, saving = false, saveAgain = false, wantEdit = false;
+
+const PWKEY = 'quintile-dashboard-pw';
+const getPw = () => { try { return sessionStorage.getItem(PWKEY) || localStorage.getItem(PWKEY) || ''; } catch (e) { return ''; } };
+function setPw(pw, remember){
+  try { sessionStorage.removeItem(PWKEY); localStorage.removeItem(PWKEY); if (pw) (remember ? localStorage : sessionStorage).setItem(PWKEY, pw); } catch (e) {}
+}
+const api = (method, body) => fetch('/api/data', {method, cache: 'no-store', body: body && JSON.stringify(body),
+  headers: {'content-type': 'application/json', 'x-dashboard-password': getPw()}});
+const cacheLocal = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const canEdit = () => !online || role === 'edit';
+
+function saveUI(){ try { localStorage.setItem(UIKEY, JSON.stringify({month:ui.month, store:ui.store, sort:ui.sort})); } catch (e) {} }
+
+// Call commit() after ANY data/settings change: caches here, then saves to the server for everyone
+function commit(msg){
+  if (!canEdit()) { toast('View only. Sign in with the edit password to make changes.'); render(); return; }
+  S.updated = Date.now(); cacheLocal();
+  if (msg) toast(msg);
+  if (online) { setStatus('Saving…', true); clearTimeout(saveTimer); saveTimer = setTimeout(pushSave, 800); }
+  else setStatus('Offline - saved on this device', true);
+  render();
+}
+async function pushSave(){
+  if (saving) { saveAgain = true; return; }
+  saving = true;
+  try {
+    const r = await api('PUT', {base: serverUpdated, data: S});
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { serverUpdated = S.updated = j.updated; cacheLocal(); setStatus('Saved for everyone'); }
+    else if (r.status === 409) { S = j.data; serverUpdated = j.data.updated; cacheLocal(); render();
+      toast('Someone else saved first. Their version is loaded - please redo your last change.'); setStatus('Saved for everyone'); }
+    else if (r.status === 401 || r.status === 403) { role = 'view'; updateAcct(); setStatus('View only', true); wantEdit = true;
+      showLogin('Your change was not saved: the edit password was not accepted.', true); }
+    else setStatus('Not saved - ' + (j.message || 'server error'), true);
+  } catch (e) { setStatus('Offline - saved on this device', true); }
+  saving = false;
+  if (saveAgain) { saveAgain = false; pushSave(); }
+}
+
+// Connect to the server: check the password and load the shared data
+async function boot(){
+  setStatus('Connecting…', true);
+  try {
+    const r = await api('GET');
+    if (r.status === 401) { online = true; role = 'view'; updateAcct(); setStatus('Signed out', true);
+      showLogin(getPw() ? 'That password did not work. Try again.' : 'Enter the dashboard password.', false); return; }
+    if (!r.ok) throw new Error('no server');
+    const j = await r.json();
+    online = true; role = j.role === 'edit' ? 'edit' : 'view';
+    if (j.data && j.data.rows) { S = j.data; serverUpdated = j.data.updated; } else { S = SEED; serverUpdated = null; }
+    cacheLocal(); hideLogin();
+    if (wantEdit && role !== 'edit') { showLogin('That is not the edit password. You can keep viewing, or try again.', true); }
+    else wantEdit = false;
+    setStatus(role === 'edit' ? (serverUpdated ? 'Saved for everyone' : 'Demo data - load yours') : 'View only', role !== 'edit');
+    if (role === 'edit' && !j.editConfigured) toast('EDIT_PASSWORD is not set on Netlify yet, so changes cannot be saved.');
+  } catch (e) { online = false; role = 'edit'; setStatus('Offline - saved on this device', true); }
+  updateAcct(); render();
+}
+
+// Sign-in screen
+function showLogin(msg, cancellable){
+  $('loginMsg').textContent = msg; $('loginCancel').hidden = !cancellable; $('login').hidden = false;
+  $('pw').value = ''; setTimeout(() => $('pw').focus(), 50);
+}
+function hideLogin(){ $('login').hidden = true; }
+function updateAcct(){
+  const b = $('acct'); b.hidden = !online;
+  b.textContent = role === 'edit' ? 'Sign out' : 'Sign in to edit';
+}
+
+/* ---------- 3. HELPERS ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const N = () => +S.settings.total || 334;
+const W = k => (+S.settings.weights[k] || 0) / 100;
+const fmt = (m, v) => !isFinite(v) ? '-' : m.fmt === 'num' ? v.toFixed(2) : (v * 100).toFixed(1) + '%';
+const fmtD = (m, d) => (d >= 0 ? '+' : '') + (m.fmt === 'num' ? d.toFixed(2) : (d * 100).toFixed(1) + ' pts');
+const mk = s => { s = String(s); let a = s.match(/(\d{1,2})\D+(\d{4})/); if (a) return +a[2] * 100 + +a[1];
+                  a = s.match(/(\d{4})\D+(\d{1,2})/); return a ? +a[1] * 100 + +a[2] : 0; };
+const months = () => [...new Set(S.rows.map(r => r.month))].sort((a, b) => mk(b) - mk(a));
+const rowsFor = m => S.rows.filter(r => r.month === m).sort((a, b) => a.rank - b.rank);
+const quint = rank => { const i = S.settings.quint.findIndex(q => rank <= +q[1]); return i < 0 ? 5 : i + 1; };
+const qc = q => `var(--q${q})`;
+const qb = (q, big) => `<span class="qb q${q}${big ? ' big' : ''}">Q${q}</span>`;
+const clampR = r => Math.min(N(), Math.max(1, r));
+const ranksOf = r => Object.fromEntries(METRICS.map(m => [m.k, r.m[m.k][1]]));
+const valsOf = r => Object.fromEntries(METRICS.map(m => [m.k, r.m[m.k][0]]));
+const scoreFrom = ranks => METRICS.reduce((s, m) => s + W(m.k) * ranks[m.k], 0);
+const score = r => scoreFrom(ranksOf(r));
+function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 3200); }
+function setStatus(t, busy){ const el = $('status'); el.textContent = t; el.classList.toggle('busy', !!busy); }
+function prevRow(r){ const ms = months(), i = ms.indexOf(r.month); return i < 0 ? null : S.rows.find(x => x.id === r.id && x.month === ms[i + 1]) || null; }
+
+/* ---------- 4. PREDICTION MODEL ----------
+   The overall rank is driven by a weighted score: sum(weight x metric rank). Lower = better.
+   From the loaded stores we learn two curves:
+     metric value -> metric rank   (e.g. 95% GP/hr ~ rank 60)
+     weighted score -> overall rank
+   Between known stores we draw straight lines; outside them we extend the trend line.
+   More stores loaded = better predictions (load the full region export if you have it). */
+function curve(pts){
+  const g = new Map();
+  pts.forEach(([x, y]) => { if (isFinite(x) && isFinite(y)) { if (!g.has(x)) g.set(x, []); g.get(x).push(y); } });
+  const P = [...g].map(([x, ys]) => [x, ys.reduce((a, b) => a + b, 0) / ys.length]).sort((a, b) => a[0] - b[0]);
+  if (!P.length) return () => NaN;
+  if (P.length === 1) return () => P[0][1];
+  const n = P.length, mx = P.reduce((a, p) => a + p[0], 0) / n, my = P.reduce((a, p) => a + p[1], 0) / n;
+  let sxy = 0, sxx = 0; P.forEach(([x, y]) => { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; });
+  const sec = (P[n - 1][1] - P[0][1]) / (P[n - 1][0] - P[0][0]);
+  let b = sxx ? sxy / sxx : 0; if (!b || Math.sign(b) !== Math.sign(sec)) b = sec;
+  return x => {
+    if (x <= P[0][0]) return P[0][1] + b * (x - P[0][0]);
+    if (x >= P[n - 1][0]) return P[n - 1][1] + b * (x - P[n - 1][0]);
+    let i = 1; while (P[i][0] < x) i++;
+    const [x0, y0] = P[i - 1], [x1, y1] = P[i];
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+  };
+}
+const cache = {};
+function model(month){
+  const key = month + '|' + S.updated; if (cache[key]) return cache[key];
+  let rs = rowsFor(month); if (rs.length < 3) rs = S.rows;
+  const c = {}; METRICS.forEach(m => c[m.k] = curve(rs.map(r => [r.m[m.k][0], r.m[m.k][1]])));
+  return cache[key] = {c, n: rs.length, sc: curve(rs.map(r => [score(r), r.rank])), inv: curve(rs.map(r => [r.rank, score(r)]))};
+}
+// Predict a store's ranks if its metric values became `vals`
+function predict(r, vals){
+  const M = model(r.month), ranks = {}; let changed = false;
+  METRICS.forEach(({k}) => { const [cv, cr] = r.m[k];
+    if (Math.abs(vals[k] - cv) < 1e-9) ranks[k] = cr; else { changed = true; ranks[k] = clampR(M.c[k](vals[k])); } });
+  const s = scoreFrom(ranks), rank = changed ? Math.round(clampR(M.sc(s))) : r.rank;
+  return {ranks, s, rank, q: quint(rank)};
+}
+// What does it take to reach quintile T?
+function plan(r, T){
+  const M = model(r.month), hi = +S.settings.quint[T - 1][1], cur = score(r);
+  if (r.rank <= hi) return {done: true, room: hi - r.rank};
+  const ts = M.inv(hi), gap = cur - ts, base = ranksOf(r), v0 = valsOf(r);
+  const step = m => m.fmt === 'num' ? 0.05 : 0.01;
+  const cap = (m, v) => m.fmt === 'num' ? Math.min(10, v) : v;
+  // a) move ONE metric only
+  const single = METRICS.map(m => {
+    const k = m.k, need = base[k] - gap / (W(k) || 1e-9), top = m.fmt === 'num' ? 10 : Math.max(v0[k] * 4, v0[k] + 3);
+    if (!W(k) || need < 1 || M.c[k](top) > need) return {m, ok: false};
+    let a = v0[k], b = top; for (let i = 0; i < 40; i++) { const mid = (a + b) / 2; if (M.c[k](mid) <= need) b = mid; else a = mid; }
+    return {m, ok: true, v: b, rank: Math.round(need)};
+  });
+  // b) fastest path: add 1 pt at a time to whichever metric buys the most rank
+  const fv = {...v0}, fr = {...base}; let s = cur, it = 0;
+  while (s > ts && it++ < 4000) {
+    let best = null, bg = 0;
+    METRICS.forEach(m => { const nv = cap(m, fv[m.k] + step(m)); if (nv <= fv[m.k]) return;
+      const nr = clampR(M.c[m.k](nv)), g = W(m.k) * (fr[m.k] - nr); if (g > bg) { bg = g; best = {k: m.k, nv, nr}; } });
+    if (!best) break; fv[best.k] = best.nv; fr[best.k] = best.nr; s = scoreFrom(fr);
+  }
+  // c) even push: the same lift on every metric
+  const evenAt = u => { const v = {}, rk = {}; METRICS.forEach(m => { v[m.k] = cap(m, v0[m.k] + (m.fmt === 'num' ? u * 10 : u)); rk[m.k] = v[m.k] === v0[m.k] ? base[m.k] : clampR(M.c[m.k](v[m.k])); }); return {v, s: scoreFrom(rk)}; };
+  let ev = null; if (evenAt(3).s <= ts) { let a = 0, b = 3; for (let i = 0; i < 40; i++) { const mid = (a + b) / 2; if (evenAt(mid).s <= ts) b = mid; else a = mid; } ev = {u: b, ...evenAt(b)}; }
+  return {done: false, hi, gap, single, fast: {ok: s <= ts, v: fv}, even: ev};
+}
+// Which metric moves the score most for a small lift? (shown as "Best lever")
+function bestLever(r){
+  const M = model(r.month); let best = null, bg = 0;
+  METRICS.forEach(m => { const v = r.m[m.k][0], nv = m.fmt === 'num' ? Math.min(10, v + 0.25) : v + 0.05;
+    const g = W(m.k) * (r.m[m.k][1] - clampR(M.c[m.k](nv))); if (g > bg) { bg = g; best = m.k; } });
+  return best;
+}
+
+/* ---------- 5. IMPORT: Excel files or pasted cells ---------- */
+const norm = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const num = c => { if (typeof c === 'number') return c; const s = String(c ?? '').trim().replace(/,/g, ''); const v = parseFloat(s); return s.endsWith('%') ? v / 100 : v; };
+const pad = n => String(n).padStart(2, '0');
+function monthOf(c, fallback){
+  if (c instanceof Date && !isNaN(c)) return pad(c.getMonth() + 1) + '/' + c.getFullYear();
+  if (typeof c === 'number' && c > 20000) { const d = new Date(Math.round((c - 25569) * 864e5)); return pad(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear(); }
+  const s = String(c ?? '').trim(); let a = s.match(/^(\d{1,2})\/\d{1,2}\/(\d{4})/); if (a) return pad(a[1]) + '/' + a[2];
+  a = s.match(/^(\d{1,2})\D(\d{4})$/); if (a) return pad(a[1]) + '/' + a[2];
+  return s || fallback;
+}
+function parseGrid(grid, fallbackMonth){
+  const hi = grid.findIndex(r => r && r.some(c => /quintile/i.test(String(c ?? ''))));
+  if (hi < 0) throw new Error('No header row with "Quintile Position" found.');
+  const H = grid[hi].map(norm), find = alts => H.findIndex(h => alts.includes(h)), or = (i, d) => i < 0 ? d : i;
+  const col = {month: or(find(['month', 'monthyear']), 0), store: or(H.findIndex(h => /loaction|location|store|site/.test(h)), 1),
+               q: or(H.findIndex(h => h.startsWith('quintile')), 2), rank: or(find(['overallrank']), 3)};
+  METRICS.forEach((m, i) => col[m.k] = [or(find(m.val), 5 + 2 * i), or(find(m.rank), 6 + 2 * i)]);
+  let label = null; grid.forEach(r => (r || []).forEach(c => { const a = String(c ?? '').match(/District is ([^\n]+)/i); if (a) label = a[1].trim() + ' district'; }));
+  const out = [];
+  for (const r of grid.slice(hi + 1)) {
+    if (!r) continue; const st = String(r[col.store] ?? '').trim();
+    if (!st || /applied filters/i.test(st) || /applied filters/i.test(String(r[0] ?? ''))) continue;
+    const [id, ...rest] = st.split(':'), rank = num(r[col.rank]);
+    if (!isFinite(rank)) continue;
+    const m = {}; let ok = true;
+    METRICS.forEach(x => { const v = num(r[col[x.k][0]]), rk = num(r[col[x.k][1]]); if (!isFinite(v) || !isFinite(rk)) ok = false; m[x.k] = [v, Math.round(rk)]; });
+    if (!ok) continue;
+    const q = num(r[col.q]);
+    out.push({month: monthOf(r[col.month], fallbackMonth), id: id.trim(), store: (rest.join(':') || id).trim(), q: isFinite(q) ? q : quint(rank), rank: Math.round(rank), m});
+  }
+  if (!out.length) throw new Error('Header found, but no store rows could be read.');
+  return {rows: out, label};
+}
+function addRows(res, replace){
+  if (replace) S.rows = []; else S.rows = S.rows.filter(r => !r.sample); // demo rows make way for real data
+  const keys = new Set(res.rows.map(r => r.month + '|' + r.id));
+  S.rows = S.rows.filter(r => !keys.has(r.month + '|' + r.id)).concat(res.rows);
+  if (res.label) S.settings.label = res.label;
+  const ms = [...new Set(res.rows.map(r => r.month))];
+  ui.month = ms.sort((a, b) => mk(b) - mk(a))[0];
+  commit(`Loaded ${res.rows.length} store rows for ${ms.join(', ')}`);
+}
+async function importFiles(files){
+  if (!window.XLSX) { toast('The Excel reader did not load. Copy the cells in Excel and use "Paste from Excel".'); return; }
+  const all = {rows: [], label: null}, errs = [];
+  for (const f of files) {
+    try {
+      const wb = XLSX.read(await f.arrayBuffer(), {type: 'array', cellDates: true});
+      let got = false;
+      for (const name of wb.SheetNames) {
+        try { const res = parseGrid(XLSX.utils.sheet_to_json(wb.Sheets[name], {header: 1, raw: true}), $('pMonth')?.value);
+              all.rows.push(...res.rows); all.label = all.label || res.label; got = true; } catch (e) {}
+      }
+      if (!got) errs.push(f.name);
+    } catch (e) { errs.push(f.name); }
+  }
+  if (all.rows.length) addRows(all, $('mode')?.value === 'replace');
+  if (errs.length) toast('Could not read: ' + errs.join(', '));
+}
+
+/* ---------- 6. OVERVIEW TAB ---------- */
+function renderOverview(){
+  const el = $('v-overview'), rows = rowsFor(ui.month);
+  if (!rows.length) { el.innerHTML = `<div class="empty"><h2>No data yet</h2><p style="margin:10px 0 16px">Load your Excel export to get started.</p><a class="btn solid" href="#data" style="display:inline-flex;align-items:center">Load data</a></div>`; return; }
+  const cnt = [1, 2, 3, 4, 5].map(q => rows.filter(r => quint(r.rank) === q).length);
+  const top = rows[0], big = cnt.indexOf(Math.max(...cnt)) + 1;
+  const list = rows.filter(r => !ui.qf || quint(r.rank) === ui.qf).sort((a, b) => ui.sort === 'name' ? a.store.localeCompare(b.store) : a.rank - b.rank);
+  const sample = rows.some(r => r.sample);
+  el.innerHTML = `
+  <div class="head"><div><p class="mut">${esc(S.settings.label || 'All stores')} · ${esc(ui.month)} · ${rows.length} stores of ${N()} ranked</p>
+    <h1 style="margin-top:6px">${esc(top.store)} leads at #${top.rank}; most stores sit in Q${big}</h1></div></div>
+  ${sample ? '<p class="small mut" style="margin:-10px 0 16px">This is fictional demo data. Load your own export under Load data.</p>' : ''}
+  <div class="card"><div class="row"><h3>Where every store sits, rank 1 to ${N()}</h3><span class="small mut">Tap a store to open it</span></div>
+    <div class="fig" id="strip" style="margin-top:8px;min-height:0"><svg></svg></div></div>
+  <div class="sec"><h2>Stores by quintile</h2><p class="mut">Tap a quintile to filter the cards and table.</p>
+    <div class="chips" id="qchips"><button class="chip" data-q="0" aria-pressed="${!ui.qf}">All ${rows.length}</button>
+    ${cnt.map((c, i) => `<button class="chip" data-q="${i + 1}" aria-pressed="${ui.qf === i + 1}"><span class="dot" style="background:${qc(i + 1)}"></span>Q${i + 1} · ${c}</button>`).join('')}
+    <label class="sel" style="margin-inline-start:auto">Sort <select id="sort"><option value="rank">Best rank</option><option value="name">Name</option></select></label></div></div>
+  <div class="grid" style="margin-top:14px">${list.map(r => storeCard(r)).join('')}</div>
+  <div class="sec"><h2>Metric scorecard</h2><p class="mut">Each cell: % to target (CSAT score) and the metric rank, coloured by the quintile that rank falls in.</p>
+  <div class="scroll card" style="padding:0"><table><thead><tr><th>Store</th><th>Quintile</th><th>Overall rank</th>
+    ${METRICS.map(m => `<th>${esc(m.label)}<br>${S.settings.weights[m.k]}%</th>`).join('')}</tr></thead><tbody>
+    ${list.map(r => `<tr class="click" data-id="${esc(r.id)}"><td><b>${esc(r.store)}</b><small>${esc(r.id)}</small></td><td>${qb(quint(r.rank))}</td><td><b>#${r.rank}</b></td>
+      ${METRICS.map(m => heat(m, r)).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+  $('sort').value = ui.sort;
+  $('sort').onchange = e => { ui.sort = e.target.value; saveUI(); renderOverview(); };
+  $('qchips').onclick = e => { const b = e.target.closest('[data-q]'); if (b) { ui.qf = +b.dataset.q; renderOverview(); } };
+  el.querySelectorAll('[data-id]').forEach(n => n.onclick = () => openStore(n.dataset.id));
+  drawStrip($('strip').firstElementChild, rows);
+}
+function storeCard(r){
+  const p = prevRow(r), d = p ? p.rank - r.rank : null;
+  return `<div class="card click" data-id="${esc(r.id)}" tabindex="0">
+    <div class="row"><div><h3>${esc(r.store)}</h3><span class="small mut">${esc(r.id)} · rank #${r.rank}${d ? ` · <span class="${d > 0 ? 'pos' : 'neg'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>` : ''}</span></div>${qb(quint(r.rank))}</div>
+    <div style="margin-top:10px">${METRICS.map(m => `<div class="mrow"><span>${esc(m.label)}</span><span><b>${fmt(m, r.m[m.k][0])}</b></span><span style="color:${qc(quint(r.m[m.k][1]))};font-weight:600">#${r.m[m.k][1]}</span></div>`).join('')}</div></div>`;
+}
+function heat(m, r){
+  const [v, rk] = r.m[m.k], c = qc(quint(rk));
+  return `<td style="background:color-mix(in srgb,${c} 20%,var(--card));box-shadow:inset 3px 0 0 ${c}">${fmt(m, v)}<small style="color:${c};opacity:1;font-weight:600">#${rk}</small></td>`;
+}
+function drawStrip(svg, rows){
+  const draw = () => {
+    const Wd = svg.clientWidth; if (!Wd) return;
+    const n = N(), padX = 10, x = r => padX + (r - 1) / (n - 1) * (Wd - 2 * padX), narrow = Wd < 520;
+    const items = rows.map(r => ({r, x: x(r.rank), w: (narrow ? r.store.slice(0, 10) : r.store).length * 7.6 + 38})).sort((a, b) => a.x - b.x);
+    const lanes = [];
+    items.forEach(it => { it.lx = Math.max(0, Math.min(it.x - 6, Wd - it.w)); let L = 0; while (lanes[L] !== undefined && lanes[L] > it.lx - 6) L++; lanes[L] = it.lx + it.w; it.L = L; });
+    const laneH = 20, base = 14 + lanes.length * laneH + 10;
+    svg.parentElement.style.height = (base + 52) + 'px';
+    const bands = S.settings.quint.map((q, i) => { const a = x(+q[0] - .5), b = x(+q[1] + .5);
+      return `<rect x="${a}" y="${base}" width="${Math.max(0, b - a)}" height="14" rx="3" fill="${qc(i + 1)}"/>
+      <text x="${(a + b) / 2}" y="${base + 34}" text-anchor="middle" font-weight="700" style="fill:${qc(i + 1)}">Q${i + 1}${narrow ? '' : ` · ${q[0]}–${q[1]}`}</text>`; }).join('');
+    const pins = items.map(it => { const y = 14 + it.L * laneH, nm = narrow ? it.r.store.slice(0, 10) : it.r.store;
+      return `<g data-id="${esc(it.r.id)}" style="cursor:pointer"><line x1="${it.x}" x2="${it.x}" y1="${y + 4}" y2="${base}" stroke="var(--mid)" stroke-width="1"/>
+      <text x="${it.lx}" y="${y}"><tspan font-weight="700">#${it.r.rank}</tspan> ${esc(nm)}</text>
+      <circle cx="${it.x}" cy="${base + 7}" r="6" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/></g>`; }).join('');
+    svg.innerHTML = bands + pins;
+  };
+  svg.onclick = e => { const g = e.target.closest('[data-id]'); if (g) openStore(g.dataset.id); };
+  new ResizeObserver(draw).observe(svg); draw();
+}
+
+/* ---------- 7. MY STORE TAB ---------- */
+function openStore(id){ ui.store = id; whatif = null; saveUI(); if (location.hash === '#store') render(); else location.hash = 'store'; }
+function renderStore(){
+  const el = $('v-store'), r = S.rows.find(x => x.id === ui.store && x.month === ui.month);
+  if (!r) { el.innerHTML = `<div class="empty"><h2>No row for this store in ${esc(ui.month || 'this month')}</h2><p style="margin-top:10px">Pick another store or month at the top.</p></div>`; return; }
+  const q = quint(r.rank), p = prevRow(r), M = model(r.month), sc = score(r), lever = bestLever(r);
+  const nextUp = q > 1 ? r.rank - +S.settings.quint[q - 2][1] : 0, cushion = +S.settings.quint[q - 1][1] - r.rank;
+  if (!whatif || whatif.id !== r.id + r.month) whatif = {id: r.id + r.month, v: valsOf(r)};
+  if (!ui.target) ui.target = Math.max(1, q - 1);
+  el.innerHTML = `
+  <div class="head"><div><p class="mut">${esc(r.id)} · ${esc(r.month)} · ${esc(S.settings.label || '')}</p><h1 style="margin-top:6px">${esc(r.store)} is #${r.rank} of ${N()}, in quintile ${q}</h1></div>${qb(q, true)}</div>
+  <div class="kpi">
+    <div class="card"><span class="mut small">Overall rank</span><b>#${r.rank}</b><span class="small mut">${p ? (p.rank > r.rank ? `▲ up ${p.rank - r.rank} from ${esc(p.month)}` : p.rank < r.rank ? `▼ down ${r.rank - p.rank} from ${esc(p.month)}` : 'No change') : 'First month loaded'}</span></div>
+    <div class="card"><span class="mut small">Weighted rank score</span><b>${sc.toFixed(1)}</b><span class="small mut">Sum of weight × metric rank. Lower is better.</span></div>
+    <div class="card"><span class="mut small">To reach Q${Math.max(1, q - 1)}</span><b>${q > 1 ? nextUp + ' ranks' : 'Top'}</b><span class="small mut">${q > 1 ? 'Places to climb' : 'Already in Q1'}</span></div>
+    <div class="card"><span class="mut small">Cushion in Q${q}</span><b>${cushion} ranks</b><span class="small mut">Room before dropping to Q${Math.min(5, q + 1)}</span></div>
+  </div>
+  <div class="sec"><h2>Current percentages</h2><p class="mut">Rank bar: longer = closer to #1, coloured by the quintile of that metric rank. Weighted points = weight × rank.</p>
+  <div class="grid">${METRICS.map(m => { const [v, rk] = r.m[m.k], pv = p && p.m[m.k][0], dd = p ? v - pv : null;
+    return `<div class="card"><div class="row"><span class="small mut">${esc(m.label)} · ${S.settings.weights[m.k]}%</span>${m.k === lever ? '<span class="tag">Best lever</span>' : ''}</div>
+      <div class="row" style="margin-top:4px"><b style="font:800 30px/1.1 'Inter Tight',sans-serif">${fmt(m, v)}</b><span><b style="color:${qc(quint(rk))}">#${rk}</b></span></div>
+      <div class="bar"><i style="width:${Math.round((1 - (rk - 1) / (N() - 1)) * 100)}%;background:${qc(quint(rk))}"></i></div>
+      <div class="row small mut" style="margin-top:6px"><span>${dd === null ? 'Top ' + Math.ceil(rk / N() * 100) + '%' : fmtD(m, dd) + ' vs ' + esc(p.month)}</span><span>${(W(m.k) * rk).toFixed(1)} pts</span></div></div>`; }).join('')}</div></div>
+  ${trendHTML(r)}
+  <div class="sec"><h2>Plan a quintile move</h2><p class="mut">Pick the quintile you want. The planner works out how much each metric needs to move.</p>
+    <div class="chips" id="tchips">${[1, 2, 3, 4, 5].map(t => `<button class="chip" data-t="${t}" aria-pressed="${ui.target === t}">Target Q${t}</button>`).join('')}</div>
+    <div id="planOut" style="margin-top:14px"></div></div>
+  <div class="sec"><h2>What-if</h2><p class="mut">Drag a metric or type a value to see the predicted rank and quintile.</p>
+    <div class="wi"><div class="card" id="wiRows"></div><div class="card result" id="wiRes"></div></div>
+    <p class="small mut" style="margin-top:10px">Predictions are estimates learned from the ${M.n} store rows loaded for this month. Loading the full region export makes them sharper.</p></div>`;
+  $('tchips').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { ui.target = +b.dataset.t; renderStore(); } };
+  renderPlan(r); renderWhatIf(r);
+  const tf = $('trend'); if (tf) drawTrend(tf.firstElementChild, r);
+}
+function renderPlan(r){
+  const T = ui.target, P = plan(r, T), out = $('planOut');
+  if (P.done) { out.innerHTML = `<div class="card"><h3>${esc(r.store)} is already in Q${T} or better</h3><p class="mut" style="margin-top:6px">It can slip ${P.room} ranks (to #${r.rank + P.room}) and still be in Q${T}. Protect the metrics with the most weighted points.</p></div>`; return; }
+  const v0 = valsOf(r), cell = (m, v) => v === undefined ? '<td class="mut">-</td>' : Math.abs(v - v0[m.k]) < 1e-9 ? `<td class="mut">hold ${fmt(m, v)}</td>` : `<td class="hl"><b>${fmt(m, v)}</b><small>Move ${fmtD(m, v - v0[m.k])}</small></td>`;
+  out.innerHTML = `<div class="card"><div class="row" style="flex-wrap:wrap"><h3>Reach Q${T}: rank #${P.hi} or better (now #${r.rank})</h3><span class="small mut">Score must fall ${P.gap.toFixed(1)} pts</span></div>
+   <div class="scroll" style="margin-top:12px"><table class="plan"><thead><tr><th>Metric</th><th>Now</th><th>Fastest path</th><th>Even push</th><th>This metric alone</th></tr></thead><tbody>
+   ${METRICS.map((m, i) => { const s = P.single[i];
+     const mv = (P.fast.ok && Math.abs(P.fast.v[m.k] - v0[m.k]) > 1e-9) || (P.even && Math.abs(P.even.v[m.k] - v0[m.k]) > 1e-9);
+     return `<tr class="${mv ? 'mvrow' : ''}"><td>${esc(m.label)}</td><td>${fmt(m, v0[m.k])}<small>#${r.m[m.k][1]}</small></td>${P.fast.ok ? cell(m, P.fast.v[m.k]) : '<td class="mut">-</td>'}${P.even ? cell(m, P.even.v[m.k]) : '<td class="mut">-</td>'}
+     <td class="${s.ok ? 'hl' : ''}">${s.ok ? `<b>${fmt(m, s.v)}</b><small>${fmtD(m, s.v - v0[m.k])} → #${s.rank}</small>` : '<span class="mut">not enough alone</span>'}</td></tr>`; }).join('')}
+   </tbody></table></div>
+   <p class="small mut" style="margin-top:10px">Highlighted cells are the moves the planner suggests. Fastest path adds a point at a time to the metric that gains the most rank. Even push lifts every metric by the same ${P.even ? (P.even.u * 100).toFixed(1) + ' pts' : 'amount'} (CSAT by a tenth of that). ${!P.fast.ok && !P.even ? 'This target looks out of reach this month with the loaded data.' : ''}</p>
+   <div class="chips" style="margin-top:12px">${P.fast.ok ? '<button class="btn sm" id="useFast">Try fastest path in what-if</button>' : ''}${P.even ? '<button class="btn sm" id="useEven">Try even push in what-if</button>' : ''}</div></div>`;
+  const use = (v, src) => { whatif.v = {...v}; whatif.src = src; renderWhatIf(r); $('wiRows').scrollIntoView({behavior: 'smooth', block: 'start'}); };
+  if ($('useFast')) $('useFast').onclick = () => use(P.fast.v, `Fastest path to Q${T}`);
+  if ($('useEven')) $('useEven').onclick = () => use(P.even.v, `Even push to Q${T}`);
+}
+function renderWhatIf(r){
+  const box = $('wiRows'), M = model(r.month);
+  box.innerHTML = `<div class="wisrc" id="wiSrc"></div>` + METRICS.map(m => { const v = whatif.v[m.k], cv = r.m[m.k][0], mx = m.fmt === 'num' ? 10 : Math.max(2, cv * 2, v * 1.2);
+    return `<div class="wirow"><label for="wr-${m.k}">${esc(m.label)}<span class="mv" id="wm-${m.k}"></span></label>
+      <input type="range" id="wr-${m.k}" data-k="${m.k}" min="0" max="${mx.toFixed(3)}" step="${m.fmt === 'num' ? 0.01 : 0.001}" value="${v}">
+      <input type="number" id="wn-${m.k}" data-k="${m.k}" step="${m.fmt === 'num' ? 0.1 : 0.5}" value="${m.fmt === 'num' ? v.toFixed(2) : (v * 100).toFixed(1)}" aria-label="${esc(m.label)} value">
+      <span class="r" id="wk-${m.k}"></span></div>`; }).join('') + `<div class="chips" style="margin-top:12px"><button class="btn sm" id="wiReset">Reset to actual</button></div>`;
+  const upd = () => {
+    const P = predict(r, whatif.v);
+    let moved = 0;
+    METRICS.forEach(m => { const a = r.m[m.k][1], b = Math.round(P.ranks[m.k]), d = whatif.v[m.k] - r.m[m.k][0], ch = Math.abs(d) > 1e-9;
+      $('wk-' + m.k).innerHTML = a === b ? `#${a}` : `#${a} → <b>#${b}</b>`;
+      $('wr-' + m.k).closest('.wirow').classList.toggle('chg', ch); $('wm-' + m.k).textContent = ch ? 'Move ' + fmtD(m, d) : ''; if (ch) moved++; });
+    const src = $('wiSrc'); src.classList.toggle('on', moved > 0);
+    src.textContent = moved ? `${whatif.src || 'Your changes'}: ${moved} metric${moved > 1 ? 's' : ''} to move, highlighted below` : 'Showing actual values. Use a plan above or move a slider.';
+    $('wiRes').innerHTML = `<span class="mut small">Predicted overall rank</span><b>#${P.rank}</b>${qb(P.q, true)}
+      <p style="margin-top:12px">${P.rank < r.rank ? `Up ${r.rank - P.rank} places` : P.rank > r.rank ? `Down ${P.rank - r.rank} places` : 'No change'} · score ${P.s.toFixed(1)}</p>
+      <p class="small mut" style="margin-top:6px">${P.q < quint(r.rank) ? `Moves from Q${quint(r.rank)} to Q${P.q}` : P.q > quint(r.rank) ? `Drops from Q${quint(r.rank)} to Q${P.q}` : `Stays in Q${P.q}`}</p>`;
+  };
+  box.oninput = e => { const k = e.target.dataset.k; if (!k) return; const m = METRICS.find(x => x.k === k);
+    if (e.target.type === 'range') { whatif.src = null; whatif.v[k] = +e.target.value; $('wn-' + k).value = m.fmt === 'num' ? whatif.v[k].toFixed(2) : (whatif.v[k] * 100).toFixed(1); }
+    else { const n = parseFloat(e.target.value); whatif.src = null; if (!isFinite(n)) return; whatif.v[k] = m.fmt === 'num' ? Math.min(10, n) : n / 100; $('wr-' + k).value = whatif.v[k]; }
+    upd(); };
+  $('wiReset').onclick = () => { whatif.v = valsOf(r); whatif.src = null; renderWhatIf(r); };
+  upd();
+}
+function trendHTML(r){
+  const hist = S.rows.filter(x => x.id === r.id); if (hist.length < 2) return '';
+  return `<div class="sec"><h2>Overall rank by month</h2><p class="mut">Higher on the chart = better rank. Coloured bands are quintiles.</p><div class="card"><div class="fig" id="trend" style="min-height:240px"><svg></svg></div></div></div>`;
+}
+function drawTrend(svg, r){
+  const hist = S.rows.filter(x => x.id === r.id).sort((a, b) => mk(a.month) - mk(b.month));
+  const draw = () => {
+    const Wd = svg.clientWidth, H = svg.clientHeight; if (!Wd) return;
+    const n = N(), L = 44, R = 20, T = 18, B = 30, x = i => L + (hist.length === 1 ? 0 : i / (hist.length - 1)) * (Wd - L - R), y = rk => T + (rk - 1) / (n - 1) * (H - T - B);
+    const bands = S.settings.quint.map((q, i) => `<rect x="${L}" y="${y(+q[0] - .5)}" width="${Wd - L - R}" height="${Math.max(0, y(+q[1] + .5) - y(+q[0] - .5))}" fill="color-mix(in srgb,${qc(i + 1)} 14%,transparent)"/><text x="${L - 8}" y="${(y(+q[0]) + y(+q[1])) / 2 + 4}" text-anchor="end" font-weight="700" style="fill:${qc(i + 1)}">Q${i + 1}</text>`).join('');
+    const pts = hist.map((h, i) => `${x(i)},${y(h.rank)}`).join(' ');
+    const dots = hist.map((h, i) => `<circle cx="${x(i)}" cy="${y(h.rank)}" r="6" fill="${qc(quint(h.rank))}" stroke="var(--card)" stroke-width="2"/><text x="${x(i)}" y="${y(h.rank) - 10}" text-anchor="middle" font-weight="700">#${h.rank}</text><text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(Wd < 520 ? h.month.slice(0, 2) : h.month)}</text>`).join('');
+    svg.innerHTML = bands + `<polyline points="${pts}" fill="none" stroke="var(--brand)" stroke-width="3"/>` + dots;
+  };
+  new ResizeObserver(draw).observe(svg); draw();
+}
+
+/* ---------- 8. LOAD DATA TAB ---------- */
+function renderData(){
+  const el = $('v-data'), ms = months(), now = new Date();
+  el.innerHTML = `
+  <div class="head"><div><p class="mut">Data and settings</p><h1 style="margin-top:6px">Drop in each month's Excel export</h1></div></div>
+  ${canEdit() ? '' : '<div class="card notice"><span><b>View only.</b> Sign in with the edit password to load data or change settings.</span><button class="btn solid sm" id="signEdit" type="button">Sign in to edit</button></div>'}
+  <div class="two">
+    <div class="card"><h3>Upload Excel files</h3><p class="small mut" style="margin:4px 0 12px">The quintile export (.xlsx, .xls or .csv). Several months at once is fine.</p>
+      <label class="drop" id="drop"><input type="file" id="file" accept=".xlsx,.xls,.csv" multiple><b>Drop files here</b><br><span class="small mut">or tap to choose</span></label>
+      <label class="sel" style="margin-top:12px">When loading <select id="mode"><option value="merge">Add or update months</option><option value="replace">Replace all data</option></select></label></div>
+    <div class="card"><h3>Paste from Excel</h3><p class="small mut" style="margin:4px 0 12px">Select the table in Excel including the header row, copy, and paste here.</p>
+      <textarea id="paste" placeholder="Month&#9;Sap: Loaction&#9;Quintile Position&#9;Overall Rank&#9;..."></textarea>
+      <div class="chips" style="margin-top:10px;align-items:center"><label class="sel">Month if missing <input id="pMonth" value="${pad(now.getMonth() + 1)}/${now.getFullYear()}" style="width:110px"></label><button class="btn solid" id="doPaste">Load pasted data</button></div></div>
+  </div>
+  <div class="sec"><h2>Months saved on the dashboard</h2><p class="mut">${S.rows.length} store rows. ${online ? 'Saved on the server, so everyone with the link sees the same data.' : 'Offline: changes are saved on this device only.'}${!serverUpdated && online ? ' You are looking at demo data until the first real load.' : ''}</p>
+    <div class="scroll card" style="padding:0"><table><thead><tr><th>Month</th><th>Stores</th><th>Type</th><th></th></tr></thead><tbody>
+    ${ms.map(m => { const rs = rowsFor(m); return `<tr><td><b>${esc(m)}</b></td><td>${rs.length}</td><td>${rs.some(r => r.sample) ? 'Sample' : 'Imported'}</td><td><button class="btn sm" data-del="${esc(m)}">Remove</button></td></tr>`; }).join('') || '<tr><td colspan="4">Nothing loaded yet</td></tr>'}
+    </tbody></table></div>
+    ${S.rows.some(r => r.sample) ? '<button class="btn sm" id="delSample" style="margin-top:10px">Remove all sample months</button>' : ''}</div>
+  <div class="sec two">
+    <div class="card"><h3>Metric weights</h3><p class="small mut" style="margin:4px 0 8px">From your scorecard. Total <b id="wsum"></b></p>
+      ${METRICS.map(m => `<div class="row" style="padding:5px 0;border-top:1px solid var(--line);align-items:center"><label for="w-${m.k}">${esc(m.label)}</label><input type="number" id="w-${m.k}" data-w="${m.k}" value="${S.settings.weights[m.k]}" step="1" style="width:90px;text-align:right"></div>`).join('')}</div>
+    <div class="card"><h3>Quintile cut-offs</h3><p class="small mut" style="margin:4px 0 8px">Rank range for each quintile.</p>
+      ${S.settings.quint.map((q, i) => `<div class="row" style="padding:5px 0;border-top:1px solid var(--line);align-items:center">${qb(i + 1)}<span style="display:flex;gap:6px;align-items:center"><input type="number" data-qi="${i}" data-qj="0" value="${q[0]}" style="width:80px" aria-label="Q${i + 1} min rank"> to <input type="number" data-qi="${i}" data-qj="1" value="${q[1]}" style="width:80px" aria-label="Q${i + 1} max rank"></span></div>`).join('')}
+      <div class="row" style="padding:5px 0;border-top:1px solid var(--line);align-items:center"><label for="tot">Stores ranked in total</label><input type="number" id="tot" value="${N()}" style="width:90px"></div>
+      <div class="row" style="padding:5px 0;border-top:1px solid var(--line);align-items:center"><label for="lbl">Dashboard label</label><input id="lbl" value="${esc(S.settings.label || '')}" style="width:180px"></div></div>
+  </div>
+  <div class="sec card"><h3>Backup and restore</h3><p class="small mut" style="margin:4px 0 12px">Download or copy a backup of all data, or paste one back in.</p>
+    <textarea id="bk" placeholder="Paste a backup here to restore it"></textarea>
+    <div class="chips" style="margin-top:10px"><button class="btn" id="dlBk" type="button">Download backup</button><button class="btn" id="copyBk">Copy backup</button><button class="btn" id="restore">Restore from box</button></div></div>`;
+  const wsum = () => $('wsum').textContent = METRICS.reduce((s, m) => s + (+S.settings.weights[m.k] || 0), 0) + '%'; wsum();
+  $('file').onchange = e => importFiles([...e.target.files]);
+  const dr = $('drop');
+  dr.ondragover = e => { e.preventDefault(); dr.classList.add('over'); };
+  dr.ondragleave = () => dr.classList.remove('over');
+  dr.ondrop = e => { e.preventDefault(); dr.classList.remove('over'); importFiles([...e.dataTransfer.files]); };
+  $('doPaste').onclick = () => {
+    const t = $('paste').value.trim(); if (!t) return toast('Paste the Excel cells first');
+    const grid = t.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : ','));
+    try { addRows(parseGrid(grid, $('pMonth').value.trim()), $('mode').value === 'replace'); } catch (e) { toast(e.message); }
+  };
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    if (b.dataset.armed) { S.rows = S.rows.filter(r => r.month !== b.dataset.del); commit('Removed ' + b.dataset.del); }
+    else { b.dataset.armed = 1; b.textContent = 'Tap again to remove'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Remove'; } }, 3000); }
+  });
+  if ($('delSample')) $('delSample').onclick = () => { S.rows = S.rows.filter(r => !r.sample); commit('Sample months removed'); };
+  el.querySelectorAll('[data-w]').forEach(i => i.onchange = () => { S.settings.weights[i.dataset.w] = +i.value || 0; commit('Weights saved'); });
+  el.querySelectorAll('[data-qi]').forEach(i => i.onchange = () => { S.settings.quint[+i.dataset.qi][+i.dataset.qj] = +i.value; commit('Cut-offs saved'); });
+  $('tot').onchange = e => { S.settings.total = Math.max(2, +e.target.value || 334); commit('Saved'); };
+  $('lbl').onchange = e => { S.settings.label = e.target.value; commit('Saved'); };
+  $('dlBk').onclick = () => { const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], {type: 'application/json'}));
+    a.download = 'quintile-backup-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+  if (!canEdit()) {
+    el.querySelectorAll('input,select,textarea,button').forEach(x => { if (!['dlBk', 'copyBk', 'signEdit'].includes(x.id)) x.disabled = true; });
+    $('drop').style.pointerEvents = 'none';
+    $('signEdit').onclick = () => { wantEdit = true; showLogin('Enter the edit password.', true); };
+  }
+  $('copyBk').onclick = async () => { const t = JSON.stringify(S); try { await navigator.clipboard.writeText(t); toast('Backup copied'); } catch (e) { $('bk').value = t; $('bk').select(); toast('Copy the text in the box'); } };
+  $('restore').onclick = () => { try { const d = JSON.parse($('bk').value); if (!Array.isArray(d.rows) || !d.settings) throw 0; S = d; commit('Backup restored'); } catch (e) { toast('That does not look like a dashboard backup'); } };
+}
+
+/* ---------- 9. START-UP + ROUTING ---------- */
+function fillFilters(){
+  const ms = months(); if (!ms.includes(ui.month)) ui.month = ms[0] || '';
+  $('fMonth').innerHTML = ms.map(m => `<option>${esc(m)}</option>`).join(''); $('fMonth').value = ui.month;
+  const stores = [...new Map(S.rows.map(r => [r.id, r.store])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  if (!stores.some(s => s[0] === ui.store)) ui.store = (rowsFor(ui.month)[0] || {}).id || '';
+  $('fStore').innerHTML = stores.map(([id, nm]) => `<option value="${esc(id)}">${esc(nm)} (${esc(id)})</option>`).join(''); $('fStore').value = ui.store;
+}
+function render(){
+  $('boot')?.remove();
+  const tab = ['overview', 'store', 'data'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+  fillFilters();
+  document.querySelectorAll('.tabs a').forEach(a => a.dataset.tab === tab ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + tab));
+  if (tab === 'overview') renderOverview(); else if (tab === 'store') renderStore(); else renderData();
+}
+$('fMonth').onchange = e => { ui.month = e.target.value; whatif = null; saveUI(); render(); };
+$('fStore').onchange = e => openStore(e.target.value);
+addEventListener('hashchange', () => { render(); scrollTo(0, 0); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.card.click')) openStore(e.target.dataset.id); });
+$('loginForm').onsubmit = e => { e.preventDefault(); setPw($('pw').value, $('remember').checked); boot(); };
+$('loginCancel').onclick = () => { wantEdit = false; hideLogin(); };
+$('acct').onclick = () => {
+  if (role === 'edit') { setPw(''); role = 'view'; wantEdit = false; toast('Signed out'); boot(); }
+  else { wantEdit = true; showLogin('Enter the edit password.', true); }
+};
+boot();
+}
+</script></body></html>
